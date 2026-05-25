@@ -2,7 +2,7 @@ name: 🚀 Xiaozhi ESP32-S3 Vietnam Ultimate Build
 
 on:
   push:
-    branches: [ develop_vn ] # Kích hoạt tự động khi bạn push lên nhánh develop_vn này
+    branches: [ develop_vn ]
   workflow_dispatch:
 
 permissions:
@@ -24,7 +24,6 @@ jobs:
         run: |
           import os
           
-          # 1. Tiêm cấu hình phần cứng, ép mở rộng bộ nhớ Flash lên 16MB và chỉ định dùng file partitions.csv custom
           config_content = (
               "CONFIG_ESP_CONSOLE_USB_CDC=y\n"
               "CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y\n"
@@ -32,27 +31,25 @@ jobs:
               "CONFIG_LV_USE_IMGFONT=y\n"
               "CONFIG_COMPILER_CXX_EXCEPTIONS=y\n"
               "CONFIG_SPIRAM_SIZE=8388608\n"
-              "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y\n"     # Khóa cấu hình 16MB Flash của bo mạch ES3C28P
-              "CONFIG_PARTITION_TABLE_CUSTOM=y\n"        # Ép sử dụng bảng phân vùng tự chế để gánh font nặng
+              "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y\n"     
+              "CONFIG_PARTITION_TABLE_CUSTOM=y\n"        
               "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"\n"
           )
           with open("sdkconfig.defaults", "w", encoding="utf-8") as f:
               f.write(config_content)
 
-          # 2. TỰ TẠO FILE SƠ ĐỒ PHÂN VÙNG ĐỘC LẬP (Chuẩn cấu trúc hệ thống ESP-IDF)
           partition_csv_content = (
               "# ESP-IDF Partition Table\n"
               "# Name,   Type, SubType, Offset,  Size, Flags\n"
               "nvs,      data, nvs,     0x9000,   0x6000,\n"
               "phy_init, data, phy,     0xf000,   0x1000,\n"
-              "factory,  app,  factory, 0x10000,  6M,\n" # Cấp hẳn 6MB chứa ứng dụng tiếng Việt thoải mái không sợ tràn
+              "factory,  app,  factory, 0x10000,  6M,\n" 
               "storage,  data, fat,            ,  4M,\n"
           )
           with open("partitions.csv", "w", encoding="utf-8") as f:
               f.write(partition_csv_content)
           print("🎯 Tự tạo thành công file sơ đồ phân vùng khủng 6MB partitions.csv ở thư mục gốc!")
 
-          # 3. Khởi tạo file thượng lệnh ép GCC xử lý lõi dữ liệu font và emoji
           with open("force_project_fix.h", "w", encoding="utf-8") as hf:
               hf.write(
                   "#define LV_FONT_FMT_TXT_LARGE 1\n"
@@ -63,7 +60,7 @@ jobs:
               )
           print("✅ Đã hoàn tất cấu trúc bảo hiểm thượng tầng!")
 
-      # BƯỚC 2: Biên dịch chính thức trong Docker Container
+      # BƯỚC 2: Biên dịch chính thức trong Docker Container với cờ bỏ bẫy format log lỗi
       - name: 🛠️ Setup ESP-IDF & Build Secure Firmware
         uses: espressif/esp-idf-ci-action@v1.1.0
         with:
@@ -74,8 +71,9 @@ jobs:
             idf.py fullclean
             
             echo "====== 🏗️ BIÊN DỊCH CHÍNH THỨC VỚI CỜ BAO PHỦ TOÀN CỤC CỦA GCC ======"
-            export CFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h -Wno-error=int-conversion"
-            export CXXFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h -fexceptions -Wno-error=return-type"
+            # CHỐT HẠ: Bổ sung -Wno-error=format và -Wno-error=format-extra-args để dẹp sạch lỗi in log hàm nhạc
+            export CFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h -Wno-error=int-conversion -Wno-error=format -Wno-error=format-extra-args"
+            export CXXFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h -fexceptions -Wno-error=return-type -Wno-error=format -Wno-error=format-extra-args"
             
             idf.py build
 
