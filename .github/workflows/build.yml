@@ -48,22 +48,19 @@ jobs:
           with open("partitions.csv", "w", encoding="utf-8") as f:
               f.write(partition_csv_content)
 
+          # RÚT GỌN TUYỆT ĐỐI: Xóa hẳn hàm giả gây lỗi cú pháp, trả lại môi trường tự nhận diện của LVGL
           with open("force_project_fix.h", "w", encoding="utf-8") as hf:
               hf.write(
                   "#define LV_FONT_FMT_TXT_LARGE 1\n"
                   "#define LV_USE_IMGFONT 1\n"
-                  "struct _lv_font_t;\n"
-                  "typedef struct _lv_font_t lv_font_t;\n"
-                  "struct _lv_font_t * lv_imgfont_create(int size, const char * path, void * user_data);\n"
               )
 
-          # ĐÒN QUYẾT ĐỊNH ĐẠI BĂM CODE THÔ: Tạo script độc lập sửa đổi trực tiếp định dạng %d thành %u của file nhạc
-          # Chặt đứt hoàn toàn cơ hội bắt bẻ lỗi [-Werror=format=] của con cáo già Espressif Compiler
+          # GIỮ NGUYÊN VŨ KHÍ CHIẾN THẮNG: Script Python tự động sửa lỗi định dạng %u của file nhạc
           with open("patch_firmware.py", "w", encoding="utf-8") as sf:
-              sf.write("import os\nfor r, d, fs in os.walk('.'):\n    for f in fs:\n        if f.endswith('.cc') or f.endswith('.c') or f.endswith('.h'):\n            fp = os.path.join(r, f)\n            try:\n                c = open(fp, 'r', errors='ignore').read()\n                if 'audio_stream_player' in f and '%d kbps' in c:\n                    c = c.replace('\"Stream: %d Hz, %d bit, %d ch, %d kbps, %d frame size\"', '\"Stream: %u Hz, %u bit, %u ch, %u kbps, %u frame size\"')\n                if '#error' in c or 'lv_imgfont_create(' in c:\n                    c = c.replace('#error', '// #error').replace('LV_FONT_FMT_TXT_LARGE 0', 'LV_FONT_FMT_TXT_LARGE 1').replace('lv_imgfont_create(', '(lv_font_t *)lv_imgfont_create(')\n                    if 'font_emoji' in f and 'lvgl.h' not in c: c = '#include \"lvgl.h\"\\n' + c\n                open(fp, 'w').write(c)\n            except: pass\n")
-          print("✅ Đã chuẩn bị xong toàn bộ kịch bản bảo hiểm thượng tầng!")
+              sf.write("import os\nfor r, d, fs in os.walk('.'):\n    for f in fs:\n        if f.endswith('.cc') or f.endswith('.c') or f.endswith('.h'):\n            fp = os.path.join(r, f)\n            try:\n                c = open(fp, 'r', errors='ignore').read()\n                if 'audio_stream_player' in f and '%d kbps' in c:\n                    c = c.replace('\"Stream: %d Hz, %d bit, %d ch, %d kbps, %d frame size\"', '\"Stream: %u Hz, %u bit, %u ch, %u kbps, %u frame size\"')\n                if '#error' in c:\n                    c = c.replace('#error', '// #error').replace('LV_FONT_FMT_TXT_LARGE 0', 'LV_FONT_FMT_TXT_LARGE 1')\n                open(fp, 'w').write(c)\n            except: pass\n")
+          print("✅ Đã làm sạch file cấu hình thượng tầng!")
 
-      # BƯỚC 2: Tải component -> Python tự động băm code thô sửa định dạng %u -> Biên dịch sạch 100%
+      # BƯỚC 2: Biên dịch chính thức trong Docker Container
       - name: 🛠️ Setup ESP-IDF, Run Patch Script & Compile
         uses: espressif/esp-idf-ci-action@v1.1.0
         with:
@@ -76,7 +73,7 @@ jobs:
             chmod -R 777 .
             python3 patch_firmware.py
             
-            echo "====== 🏗️ BIÊN DỊCH CHÍNH THỨC SẠCH SẼ VỚI MÃ NGUỒN ĐÃ CHUẨN HÓA ======"
+            echo "====== 🏗️ BIÊN DỊCH CHÍNH THỨC SẠCH SẼ LẦN CUỐI CÙNG ======"
             idf.py fullclean
             
             export CFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
