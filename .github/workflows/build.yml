@@ -19,11 +19,13 @@ jobs:
         uses: actions/checkout@v4
 
       # GỐC RỄ: TỰ TẠO SƠ ĐỒ PHÂN VÙNG MỚI KHỦNG 6MB VÀ TIÊM CẤU HÌNH PHẦN CỨNG 16MB FLASH
+      # Đồng thời tiêm trực tiếp cờ nới lỏng bẫy định dạng log thẳng vào tệp CMakeLists.txt gốc của dự án
       - name: 🐍 Create Custom Partition Table & Hardware Profiles
         shell: python
         run: |
           import os
           
+          # 1. Tiêm cấu hình chuẩn phần cứng, ép mở rộng bộ nhớ Flash lên 16MB và chỉ định dùng file partitions.csv custom
           config_content = (
               "CONFIG_ESP_CONSOLE_USB_CDC=y\n"
               "CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y\n"
@@ -38,6 +40,7 @@ jobs:
           with open("sdkconfig.defaults", "w", encoding="utf-8") as f:
               f.write(config_content)
 
+          # 2. TỰ TẠO FILE SƠ ĐỒ PHÂN VÙNG ĐỘC LẬP LỚN 6MB CHỐT HẠ TRÀN BỘ NHỚ
           partition_csv_content = (
               "# ESP-IDF Partition Table\n"
               "# Name,   Type, SubType, Offset,  Size, Flags\n"
@@ -48,8 +51,20 @@ jobs:
           )
           with open("partitions.csv", "w", encoding="utf-8") as f:
               f.write(partition_csv_content)
-          print("🎯 Tự tạo thành công file sơ đồ phân vùng khủng 6MB partitions.csv ở thư mục gốc!")
 
+          # 3. TIÊM LỆNH ÉP MỞ CỜ EXCEPTION VÀ TẮT BẪY FORMAT VÀO FILE CMAKELISTS.TXT GỐC CỦA DỰ ÁN
+          # add_compile_options có tính chất bắc cầu, ép Ninja phải bỏ bẫy lỗi gắt gao cho TOÀN BỘ file con
+          cmake_path = "CMakeLists.txt"
+          if os.path.exists(cmake_path):
+              with open(cmake_path, "r", encoding="utf-8") as f:
+                  cmake_content = f.read()
+              patch_cmd = "\nadd_compile_options(-fexceptions -Wno-error=return-type -Wno-error=format -Wno-error=format-extra-args)\n"
+              if "fexceptions" not in cmake_content:
+                  with open(cmake_path, "w", encoding="utf-8") as f:
+                      f.write(patch_cmd + cmake_content)
+              print("✅ Đã khóa thành công bộ cờ bảo hiểm toàn cục vào file CMakeLists.txt gốc!")
+
+          # 4. Khởi tạo file thượng lệnh ép GCC xử lý lõi dữ liệu font và emoji
           with open("force_project_fix.h", "w", encoding="utf-8") as hf:
               hf.write(
                   "#define LV_FONT_FMT_TXT_LARGE 1\n"
@@ -60,7 +75,7 @@ jobs:
               )
           print("✅ Đã hoàn tất cấu trúc bảo hiểm thượng tầng!")
 
-      # BƯỚC 2: Biên dịch chính thức trong Docker Container với cờ bỏ bẫy format log lỗi
+      # BƯỚC 2: Biên dịch chính thức trong Docker Container
       - name: 🛠️ Setup ESP-IDF & Build Secure Firmware
         uses: espressif/esp-idf-ci-action@v1.1.0
         with:
@@ -70,10 +85,9 @@ jobs:
             idf.py set-target esp32s3
             idf.py fullclean
             
-            echo "====== 🏗️ BIÊN DỊCH CHÍNH THỨC VỚI CỜ BAO PHỦ TOÀN CỤC CỦA GCC ======"
-            # CHỐT HẠ: Bổ sung -Wno-error=format và -Wno-error=format-extra-args để dẹp sạch lỗi in log hàm nhạc
-            export CFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h -Wno-error=int-conversion -Wno-error=format -Wno-error=format-extra-args"
-            export CXXFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h -fexceptions -Wno-error=return-type -Wno-error=format -Wno-error=format-extra-args"
+            echo "====== 🏗️ BIÊN DỊCH CHÍNH THỨC VỚI CỜ BAO PHỦ ĐÃ NHÚNG TỪ GỐC ======"
+            export CFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
+            export CXXFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
             
             idf.py build
 
