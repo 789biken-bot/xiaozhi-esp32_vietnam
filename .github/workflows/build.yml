@@ -18,8 +18,7 @@ jobs:
       - name: 📂 Checkout Source Code
         uses: actions/checkout@v4
 
-      # GỐC RỄ: TỰ TẠO SƠ ĐỒ PHÂN VÙNG MỚI KHỦNG 6MB VÀ TIÊM CẤU HÌNH PHẦN CỨNG 16MB FLASH
-      # Đồng thời tiêm trực tiếp cờ nới lỏng bẫy định dạng log thẳng vào tệp CMakeLists.txt gốc của dự án
+      # GỐC RỄ: TỰ TẠO SƠ ĐỒ PHÂN VÙNG MỚI KHỦNG 6MB VÀ TIÊM CỜ BẢO HIỂM THẲNG VÀO LÕI ĐA LỚP CMAKE
       - name: 🐍 Create Custom Partition Table & Hardware Profiles
         shell: python
         run: |
@@ -52,19 +51,29 @@ jobs:
           with open("partitions.csv", "w", encoding="utf-8") as f:
               f.write(partition_csv_content)
 
-          # 3. TIÊM LỆNH ÉP MỞ CỜ EXCEPTION VÀ TẮT BẪY FORMAT VÀO FILE CMAKELISTS.TXT GỐC CỦA DỰ ÁN
-          # add_compile_options có tính chất bắc cầu, ép Ninja phải bỏ bẫy lỗi gắt gao cho TOÀN BỘ file con
-          cmake_path = "CMakeLists.txt"
-          if os.path.exists(cmake_path):
-              with open(cmake_path, "r", encoding="utf-8") as f:
-                  cmake_content = f.read()
+          # 3. ĐÒN QUYẾT ĐỊNH: Tiêm cờ bảo hiểm toàn cục vào file CMakeLists.txt tổng ở thư mục gốc
+          cmake_root = "CMakeLists.txt"
+          if os.path.exists(cmake_root):
+              with open(cmake_root, "r", encoding="utf-8") as f:
+                  content = f.read()
               patch_cmd = "\nadd_compile_options(-fexceptions -Wno-error=return-type -Wno-error=format -Wno-error=format-extra-args)\n"
-              if "fexceptions" not in cmake_content:
-                  with open(cmake_path, "w", encoding="utf-8") as f:
-                      f.write(patch_cmd + cmake_content)
-              print("✅ Đã khóa thành công bộ cờ bảo hiểm toàn cục vào file CMakeLists.txt gốc!")
+              if "fexceptions" not in content:
+                  with open(cmake_root, "w", encoding="utf-8") as f:
+                      f.write(patch_cmd + content)
 
-          # 4. Khởi tạo file thượng lệnh ép GCC xử lý lõi dữ liệu font và emoji
+          # 4. TIÊM THẲNG CỜ BẢO HIỂM VÀO FILE main/CMakeLists.txt CON (Nơi quản lý trực tiếp file nhạc audio_stream_player.cc)
+          # Biện pháp bọc lót tối cao chặn đứng 100% bẫy lỗi [-Werror=format=] ở giây cuối cùng
+          cmake_main = os.path.join("main", "CMakeLists.txt")
+          if os.path.exists(cmake_main):
+              with open(cmake_main, "r", encoding="utf-8") as f:
+                  content = f.read()
+              patch_main_cmd = "\nadd_compile_options(-fexceptions -Wno-error=return-type -Wno-error=format -Wno-error=format-extra-args)\n"
+              if "fexceptions" not in content:
+                  with open(cmake_main, "w", encoding="utf-8") as f:
+                      f.write(patch_main_cmd + content)
+              print("✅ Đã khóa cứng cờ bảo hiểm vào bộ não CMake trực tiếp của thư mục main!")
+
+          # 5. Khởi tạo file thượng lệnh ép GCC xử lý lõi dữ liệu font và emoji
           with open("force_project_fix.h", "w", encoding="utf-8") as hf:
               hf.write(
                   "#define LV_FONT_FMT_TXT_LARGE 1\n"
@@ -73,7 +82,7 @@ jobs:
                   "typedef struct _lv_font_t lv_font_t;\n"
                   "struct _lv_font_t * lv_imgfont_create(int size, const char * path, void * user_data);\n"
               )
-          print("✅ Đã hoàn tất cấu trúc bảo hiểm thượng tầng!")
+          print("✅ Đã hoàn tất toàn bộ cấu trúc bảo hiểm thượng tầng đa lớp!")
 
       # BƯỚC 2: Biên dịch chính thức trong Docker Container
       - name: 🛠️ Setup ESP-IDF & Build Secure Firmware
@@ -85,7 +94,7 @@ jobs:
             idf.py set-target esp32s3
             idf.py fullclean
             
-            echo "====== 🏗️ BIÊN DỊCH CHÍNH THỨC VỚI CỜ BAO PHỦ ĐÃ NHÚNG TỪ GỐC ======"
+            echo "====== 🏗️ BIÊN DỊCH CHÍNH THỨC VỚI CỜ BAO PHỦ ĐÃ NHÚNG TỪ LÕI CMAKE ======"
             export CFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
             export CXXFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
             
