@@ -92,10 +92,11 @@ jobs:
           esp_idf_version: release-v5.4
           target: esp32s3
           command: |
+            export CFLAGS="-Wno-error=format -Wno-error=format-extra-args -Wno-format"
+            export CXXFLAGS="-Wno-error=format -Wno-error=format-extra-args -Wno-format"
             idf.py set-target esp32s3
             idf.py fullclean
             idf.py build
-
       - name: "🧩 Merge BIN"
         uses: espressif/esp-idf-ci-action@v1.1.0
         with:
