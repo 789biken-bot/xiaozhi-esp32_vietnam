@@ -1,23 +1,37 @@
-name: 🚀 Xiaozhi ESP32-S3 Vietnam Industrial Pro Pipeline
+name: 🚀 Xiaozhi ESP32-S3 Vietnam Ultimate Pipeline
 
 on:
   push:
-    branches: [ develop_vn ]
+    branches:
+      - develop_vn
+      - stable
+
   workflow_dispatch:
 
 permissions:
   contents: write
   actions: write
 
+env:
+  FIRMWARE_NAME: NguyenLamAI
+  TARGET_CHIP: esp32s3
+  FLASH_MODE: dio
+  FLASH_SIZE: 16MB
+
 jobs:
   build-firmware:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📂 Checkout
+      - name: 📂 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Patch Project
+      - name: 🧠 Generate Firmware Version
+        run: |
+          echo "BUILD_TIME=$(date +'%Y%m%d-%H%M')" >> $GITHUB_ENV
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: 🐍 Patch Industrial Config
         shell: python
         run: |
           import os
@@ -40,6 +54,8 @@ jobs:
 
           CONFIG_COMPILER_CXX_EXCEPTIONS=y
           CONFIG_COMPILER_CXX_RTTI=y
+
+          CONFIG_LOG_DEFAULT_LEVEL_INFO=y
           """
 
           open("sdkconfig.defaults", "w").write(
@@ -51,9 +67,13 @@ jobs:
 
           partitions = """
           # Name, Type, SubType, Offset, Size
+
           nvs,data,nvs,0x9000,0x6000
           phy_init,data,phy,0xf000,0x1000
+
           factory,app,factory,0x10000,6M
+          ota_0,app,ota_0,,6M
+
           storage,data,fat,,4M
           """
 
@@ -64,9 +84,12 @@ jobs:
               )
           )
 
+          # FORCE BOARD PATCH
           for root, dirs, files in os.walk("."):
               for f in files:
-                  if f.endswith(".json"):
+
+                  if f.endswith(".json") or f.endswith(".h"):
+
                       fp = os.path.join(root, f)
 
                       try:
@@ -77,14 +100,19 @@ jobs:
                               "esp32-s3-box"
                           )
 
+                          txt = txt.replace(
+                              "xiaozhi-s3",
+                              "nguyenlam-ai"
+                          )
+
                           open(fp, "w").write(txt)
 
                       except:
                           pass
 
-          print("PATCH DONE")
+          print("✅ INDUSTRIAL PATCH COMPLETE")
 
-      - name: 🛠 Build Firmware
+      - name: 🛠️ Build Firmware
         uses: espressif/esp-idf-ci-action@v1.1.0
         with:
           esp_idf_version: release-v5.4
@@ -94,14 +122,17 @@ jobs:
             idf.py reconfigure
             idf.py build
 
-      - name: 🧩 Merge BIN
+      - name: 🧩 Generate Factory Firmware
         uses: espressif/esp-idf-ci-action@v1.1.0
         with:
           esp_idf_version: release-v5.4
           target: esp32s3
           command: |
             cd build
-            python3 -m esptool --chip esp32s3 merge_bin \
+
+            python3 -m esptool \
+              --chip esp32s3 \
+              merge_bin \
               -o factory_merged.bin \
               --flash_mode dio \
               --flash_size 16MB \
@@ -109,12 +140,27 @@ jobs:
 
             cp factory_merged.bin ../factory_merged.bin
 
-      - name: 📦 Upload
+      - name: 📦 Upload Firmware Package
         uses: actions/upload-artifact@v4
         with:
-          name: firmware
+          name: firmware-${{ env.BUILD_TIME }}-${{ env.SHORT_SHA }}
+          retention-days: 14
+          compression-level: 0
+
           path: |
             factory_merged.bin
             build/bootloader/bootloader.bin
             build/partition_table/partition-table.bin
             build/*.bin
+            sdkconfig.defaults
+            partitions.csv
+
+      - name: 📝 Publish Build Summary
+        run: |
+          echo "## 🚀 NguyenLamAI Ultimate Firmware Build Success" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Build Time: $BUILD_TIME" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: $SHORT_SHA" >> $GITHUB_STEP_SUMMARY
+          echo "- Flash Mode: dio" >> $GITHUB_STEP_SUMMARY
+          echo "- Flash Size: 16MB" >> $GITHUB_STEP_SUMMARY
+          echo "- Factory Firmware: factory_merged.bin" >> $GITHUB_STEP_SUMMARY
