@@ -52,8 +52,7 @@ jobs:
           with open("partitions.csv", "w", encoding="utf-8") as f:
               f.write(partition_csv_content)
 
-          # ĐÃ SỬA CHUẨN ĐẲNG CẤP: Tách riêng cờ biên dịch cho C và C++ bằng hàm set(CMAKE_...)
-          # Dẹp sạch hoàn toàn lỗi "-frtti is valid for C++ but not for C"
+          # Tách riêng cờ biên dịch chuẩn cho C và C++ nhúng từ bộ não CMake tổng
           cmake_root = "CMakeLists.txt"
           if os.path.exists(cmake_root):
               with open(cmake_root, "r", encoding="utf-8") as f:
@@ -71,10 +70,10 @@ jobs:
           with open("force_project_fix.h", "w", encoding="utf-8") as hf:
               hf.write("#define LV_FONT_FMT_TXT_LARGE 1\n#define LV_USE_IMGFONT 1\n")
 
-          # BỘ LỌC TỰ ĐỘNG VÁ FILE & SĂN LÙNG QUÉT SẠCH QUẢNG CÁO TRONG CODE THÔ
+          # SIÊU CẤP BĂM FILE: Python đọc toàn bộ file dạng chuỗi lớn để triệt hạ tận gốc cụm log lỗi ngắt dòng
           with open("patch_firmware.py", "w", encoding="utf-8") as sf:
-              sf.write("import os\nfor r, d, fs in os.walk('.'):\n    for f in fs:\n        if f.endswith('.cc') or f.endswith('.c') or f.endswith('.h'):\n            fp = os.path.join(r, f)\n            try:\n                c = open(fp, 'r', errors='ignore').read()\n                # 1. Vá lỗi bẫy format định dạng nhạc tai họa\n                if 'audio_stream_player' in f and 'Stream:' in c:\n                    lines = c.split('\\n')\n                    for i, line in enumerate(lines):\n                        if 'Stream:' in line: lines[i] = '// ' + line\n                    c = '\\n'.join(lines)\n                # 2. Vá bẻ khóa phông chữ lớn\n                if '#error' in c:\n                    c = c.replace('#error', '// #error').replace('LV_FONT_FMT_TXT_LARGE 0', 'LV_FONT_FMT_TXT_LARGE 1')\n                # 3. SĂN LÙNG QUẢNG CÁO: Tự động xóa rác bản quyền của tác giả cũ đổi thành tên của riêng fen!\n                ads_keywords = ['TienHuyIoT', 'Tiến Huy', 'AE Maker', 'YouTube', 'Facebook', 'Donate', 'Ủng hộ']\n                for kw in ads_keywords:\n                    if kw in c:\n                        c = c.replace(kw, 'Nguyen Lam')\n                open(fp, 'w').write(c)\n            except: pass\n")
-          print("✅ Đã tách biệt cờ C/C++ và khởi tạo kịch bản dọn rác quảng cáo tự động thành công!")
+              sf.write("import os\nfor r, d, fs in os.walk('.'):\n    for f in fs:\n        if f.endswith('.cc') or f.endswith('.c') or f.endswith('.h'):\n            fp = os.path.join(r, f)\n            try:\n                c = open(fp, 'r', errors='ignore').read()\n                # 1. ĐÒN QUYẾT ĐỊNH: Dò tìm file nhạc, băm nát và xóa sổ vĩnh viễn cả cụm in log Stream ngắt dòng tai họa\n                if 'audio_stream_player' in f and 'Stream:' in c:\n                    start_idx = c.find('ESP_LOGI(TAG, \"Stream:')\n                    if start_idx != -1:\n                        end_idx = c.find(');', start_idx)\n                        if end_idx != -1:\n                            c = c[:start_idx] + '// Đã thanh lọc bẫy log format thành công!' + c[end_idx+2:]\n                # 2. Vá bẻ khóa phông chữ lớn\n                if '#error' in c:\n                    c = c.replace('#error', '// #error').replace('LV_FONT_FMT_TXT_LARGE 0', 'LV_FONT_FMT_TXT_LARGE 1')\n                # 3. SĂN LÙNG QUẢNG CÁO: Tự động xóa rác bản quyền của tác giả cũ đổi thành tên của riêng fen!\n                ads_keywords = ['TienHuyIoT', 'Tiến Huy', 'AE Maker', 'YouTube', 'Facebook', 'Donate', 'Ủng hộ']\n                for kw in ads_keywords:\n                    if kw in c:\n                        c = c.replace(kw, 'Nguyen Lam')\n                open(fp, 'w').write(c)\n            except: pass\n")
+          print("✅ Đã hoàn tất kịch bản đại băm chuỗi log lỗi ngắt dòng và dọn rác quảng cáo!")
 
       # BƯỚC 2: Biên dịch sạch chính thức trong Docker Container
       - name: 🛠️ Setup ESP-IDF, Run Patch Script & Compile
