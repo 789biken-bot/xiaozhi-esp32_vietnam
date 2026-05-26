@@ -18,13 +18,13 @@ jobs:
       - name: 📂 Checkout Source Code
         uses: actions/checkout@v4
 
-      # ĐÒN QUYẾT ĐỊNH: Ghìm cấu hình DIO, nới rộng bộ nhớ Stack Main và xóa sổ mạch loa trần rác
+      # ĐÒN QUYẾT ĐỊNH: Tắt driver OLED SSD1306 cũ, ép kích hoạt Driver Màn hình màu SPI ILI9341 và nới Stack 16KB
       - name: 🐍 Create All Hardware Profiles, Clean Ads & Custom Branding
         shell: python
         run: |
           import os
           
-          # CẤU HÌNH KHÓA HÒM: Mở full cấu hình phần cứng khủng 16MB Flash, 8MB RAM Octal
+          # CẤU HÌNH KHÓA HÒM: Bật driver màn hình màu ILI9341, tắt OLED SSD1306, ghim chế độ DIO và nới 16KB Stack
           config_content = (
               "CONFIG_ESP_CONSOLE_USB_CDC=y\n"
               "CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y\n"
@@ -35,18 +35,19 @@ jobs:
               "CONFIG_SPIRAM=y\n"
               "CONFIG_SPIRAM_SIZE=8388608\n"
               "CONFIG_ESPTOOLPY_FLASHMODE_IDF_DEFAULT=y\n"
-              "CONFIG_ESPTOOLPY_FLASHMODE_DIO=y\n"       # Ép cứng DIO giải phóng bus dữ liệu màn hình
+              "CONFIG_ESPTOOLPY_FLASHMODE_DIO=y\n"       
               "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y\n"     
               "CONFIG_PARTITION_TABLE_CUSTOM=y\n"        
               "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"\n"
-              "CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384\n"  # VŨ KHÍ CHỐT HẠ: Nới rộng Stack Main lên hẳn 16KB chống tràn bộ nhớ!
+              "CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384\n"  
+              "CONFIG_XIAOZHI_DISPLAY_ILI9341=y\n"       # ÉP CỨNG: Bật driver màn hình màu SPI ILI9341 cho board 2.8"
+              "CONFIG_XIAOZHI_DISPLAY_SSD1306=n\n"       # ÉP CỨNG: Tắt vĩnh viễn con quái vật OLED SSD1306 rác làm sập mạch
           )
           with open("sdkconfig.defaults", "w", encoding="utf-8") as f: f.write(config_content)
 
           partition_content = "# Name, Type, SubType, Offset, Size, Flags\nnvs, data, nvs, 0x9000, 0x6000,\nphy_init, data, phy, 0xf000, 0x1000,\nfactory, app, factory, 0x10000, 6M,\nstorage, data, fat, , 4M,\n"
           with open("partitions.csv", "w", encoding="utf-8") as f: f.write(partition_content)
 
-          # Ép cờ Compiler RTTI và Exceptions từ bộ não CMake tổng
           cmake_root = "CMakeLists.txt"
           if os.path.exists(cmake_root):
               with open(cmake_root, "r", encoding="utf-8") as f: content = f.read()
@@ -69,7 +70,7 @@ jobs:
                                   end_idx = c.find(');', start_idx)
                                   if end_idx != -1: c = c[:start_idx] + '// Băm log format!' + c[end_idx+2:]
                           
-                          # Ép code thô rũ bỏ hoàn toàn cấu hình mạch loa trần bread-compact-wifi để nhận diện đúng mạch màn hình cảm ứng
+                          # Triệt hạ triệt để cấu hình bo mạch rác compact-wifi để ép nhận đúng dòng board màn hình màu cảm ứng cao cấp
                           if "bread-compact-wifi" in c: c = c.replace("bread-compact-wifi", "es3c28p-display")
                           
                           if "Xiaozhi" in c: c = c.replace('"Xiaozhi"', '"Nguyen_Lam_AI"').replace('"xiaozhi"', '"nguyen_lam_ai"')
@@ -79,7 +80,7 @@ jobs:
                               if kw in c: c = c.replace(kw, 'Nguyen Lam')
                           open(fp, 'w').write(c)
                       except: pass
-          print("✅ Đã giải phóng bộ nhớ Stack Main và ép cấu hình mạch cảm ứng thành công!")
+          print("✅ Đã kích hoạt driver màn hình màu ILI9341 và gạt bỏ OLED cũ từ gốc rễ!")
 
       # BƯỚC 2: Biên dịch chính thức trong môi trường Docker Container sạch v1.1.0 của Espressif
       - name: 🛠️ Setup ESP-IDF, Run Patch Script & Compile
@@ -97,7 +98,7 @@ jobs:
             export CXXFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
             idf.py build
 
-      # BƯỚC 3: Công thức gộp file esptool đại thắng ghim chặt cờ --flash_mode dio bảo hiểm 2 tầng
+      # BƯỚC 3: Công thức đóng hòm gộp file esptool ghim chặt cờ --flash_mode dio bảo hiểm 2 tầng
       - name: 🧩 Generate Factory Merged Binary
         uses: espressif/esp-idf-ci-action@v1.1.0
         with:
@@ -108,7 +109,7 @@ jobs:
             python3 -m esptool --chip esp32s3 merge_bin -o factory_merged.bin --flash_mode dio --flash_freq 80m --flash_size 16MB @flash_args
             cp factory_merged.bin ../factory_merged.bin
 
-      # BƯỚC THU HOẠCH CHỐT HẠ: Lưu tệp gộp siêu cao cấp không lỗi lầm lên mây hệ thống Artifacts
+      # BƯỚC THU HOẠCH CHỐT HẠ: Lưu tệp gộp siêu cao cấp gạt bỏ hoàn toàn bẫy sai driver màn hình
       - name: 📦 Upload Guaranteed Premium Firmware Artifacts
         uses: actions/upload-artifact@v4
         with:
