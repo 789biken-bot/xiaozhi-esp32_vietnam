@@ -108,13 +108,15 @@ jobs:
           esp_idf_version: release-v5.4
           target: esp32s3
           command: |
-
-            idf.py merge-bin \
-              --output factory_merged.bin \
-              --format raw
-
-            cp factory_merged.bin ../factory_merged.bin
-
+            python -m esptool --chip esp32s3 merge_bin \
+              -o factory_merged.bin \
+              --flash_mode dio \
+              --flash_freq 80m \
+              --flash_size 16MB \
+              0x0 build/bootloader/bootloader.bin \
+              0x8000 build/partition_table/partition-table.bin \
+              0x10000 build/xiaozhi_vn.bin
+     
       - name: 📦 Upload Firmware
         uses: actions/upload-artifact@v4
         with:
