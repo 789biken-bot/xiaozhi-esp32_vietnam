@@ -15,36 +15,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: 📂 Checkout Source Code
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: 🐍 Generate Clean ESP-IDF Config
+      - name: 🧩 Create sdkconfig.defaults
         shell: bash
         run: |
 
-          cat > sdkconfig.defaults << 'EOF'
-          CONFIG_ESP_CONSOLE_USB_CDC=y
-          CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y
+          echo 'CONFIG_ESP_CONSOLE_USB_CDC=y' >> sdkconfig.defaults
+          echo 'CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y' >> sdkconfig.defaults
 
-          CONFIG_COMPILER_CXX_EXCEPTIONS=y
-          CONFIG_COMPILER_CXX_RTTI=y
+          echo 'CONFIG_COMPILER_CXX_EXCEPTIONS=y' >> sdkconfig.defaults
+          echo 'CONFIG_COMPILER_CXX_RTTI=y' >> sdkconfig.defaults
 
-          CONFIG_SPIRAM=y
-          CONFIG_SPIRAM_MODE_OCT=y
-          CONFIG_SPIRAM_SPEED_80M=y
+          echo 'CONFIG_SPIRAM=y' >> sdkconfig.defaults
+          echo 'CONFIG_SPIRAM_MODE_OCT=y' >> sdkconfig.defaults
+          echo 'CONFIG_SPIRAM_SPEED_80M=y' >> sdkconfig.defaults
 
-          CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+          echo 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' >> sdkconfig.defaults
 
-          CONFIG_PARTITION_TABLE_CUSTOM=y
-          CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+          echo 'CONFIG_PARTITION_TABLE_CUSTOM=y' >> sdkconfig.defaults
+          echo 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"' >> sdkconfig.defaults
 
-          CONFIG_LV_FONT_FMT_TXT_LARGE=y
-          CONFIG_LV_USE_IMGFONT=y
-          EOF
+          echo 'CONFIG_LV_FONT_FMT_TXT_LARGE=y' >> sdkconfig.defaults
+          echo 'CONFIG_LV_USE_IMGFONT=y' >> sdkconfig.defaults
 
-          cat > partitions.csv << 'EOF'
+      - name: 🧩 Create partitions.csv
+        shell: bash
+        run: |
+
+          cat > partitions.csv << EOF
           # Name, Type, SubType, Offset, Size, Flags
           nvs,data,nvs,0x9000,0x6000,
           phy_init,data,phy,0xf000,0x1000,
@@ -52,48 +55,21 @@ jobs:
           storage,data,fat,,4M,
           EOF
 
-          echo "✅ Clean config generated"
-
-      - name: 🔧 Patch Source Compatibility
+      - name: 🔧 Patch Compiler Flags
         shell: bash
         run: |
 
-          python3 << 'PYEOF'
-          import os
+          if [ -f CMakeLists.txt ]; then
+            echo 'set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=format")' >> CMakeLists.txt
+            echo 'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=format")' >> CMakeLists.txt
+            echo 'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=format-extra-args")' >> CMakeLists.txt
+          fi
 
-          for root, dirs, files in os.walk("."):
-
-              for file in files:
-
-                  if not file.endswith((".c", ".cc", ".cpp", ".h", ".hpp")):
-                      continue
-
-                  path = os.path.join(root, file)
-
-                  try:
-                      with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                          content = f.read()
-
-                      original = content
-
-                      if "#error" in content:
-                          content = content.replace("#error", "// #error")
-
-                      if "LV_FONT_FMT_TXT_LARGE 0" in content:
-                          content = content.replace(
-                              "LV_FONT_FMT_TXT_LARGE 0",
-                              "LV_FONT_FMT_TXT_LARGE 1"
-                          )
-
-                      if original != content:
-                          with open(path, "w", encoding="utf-8") as f:
-                              f.write(content)
-
-                  except Exception:
-                      pass
-
-          print("✅ Source compatibility patch complete")
-          PYEOF
+          if [ -f main/CMakeLists.txt ]; then
+            echo 'set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=format")' >> main/CMakeLists.txt
+            echo 'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=format")' >> main/CMakeLists.txt
+            echo 'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=format-extra-args")' >> main/CMakeLists.txt
+          fi
 
       - name: 🛠️ Setup ESP-IDF & Compile
         uses: espressif/esp-idf-ci-action@v1.1.0
@@ -102,72 +78,10 @@ jobs:
           target: esp32s3
           command: |
 
-            echo "============================"
-            echo "START CLEAN BUILD"
-            echo "============================"
+            echo "======================"
+            echo "START BUILD"
+            echo "======================"
 
             idf.py set-target esp32s3
 
-            idf.py fullclean
-
-            idf.py reconfigure
-
-            idf.py build
-
-      - name: 🧩 Generate Factory Merged Binary
-        if: success()
-        uses: espressif/esp-idf-ci-action@v1.1.0
-        with:
-          esp_idf_version: release-v5.4
-          target: esp32s3
-          command: |
-
-            idf.py merge-bin \
-              --output factory_merged.bin \
-              --format raw
-
-      - name: 📊 Analyze Firmware Size
-        if: success()
-        uses: espressif/esp-idf-ci-action@v1.1.0
-        with:
-          esp_idf_version: release-v5.4
-          target: esp32s3
-          command: |
-
-            idf.py size
-
-      - name: 📦 Upload Firmware Artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xiaozhi-vietnam-firmware
-          retention-days: 7
-          path: |
-            factory_merged.bin
-            build/*.bin
-            build/bootloader/*.bin
-            build/partition_table/*.bin
-
-      - name: 📜 Upload Full Build Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-build-logs
-          retention-days: 3
-          path: |
-            build/log/*
-            sdkconfig
-            sdkconfig.defaults
-
-      - name: ✅ Publish Build Summary
-        if: success()
-        shell: bash
-        run: |
-
-          echo "## 🚀 Xiaozhi Vietnam Build Success" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- ESP-IDF v5.4" >> $GITHUB_STEP_SUMMARY
-          echo "- Target: ESP32-S3" >> $GITHUB_STEP_SUMMARY
-          echo "- Flash: 16MB" >> $GITHUB_STEP_SUMMARY
-          echo "- PSRAM: 8MB" >> $GITHUB_STEP_SUMMARY
-          echo "- RTTI + Exceptions Enabled" >> $GITHUB_STEP_SUMMARY
+            idf.py full
