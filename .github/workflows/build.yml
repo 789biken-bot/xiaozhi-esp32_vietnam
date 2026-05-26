@@ -52,14 +52,19 @@ jobs:
           with open("partitions.csv", "w", encoding="utf-8") as f:
               f.write(partition_csv_content)
 
-          # ĐÃ SỬA CHUẨN: Chỉ tiêm cờ bảo hiểm toàn cục vào DUY NHẤT file CMakeLists.txt tổng ở thư mục gốc
-          # Dẹp sạch hoàn toàn lỗi "command is not scriptable" của thư mục main con
+          # ĐÃ SỬA CHUẨN ĐẲNG CẤP: Tách riêng cờ biên dịch cho C và C++ bằng hàm set(CMAKE_...)
+          # Dẹp sạch hoàn toàn lỗi "-frtti is valid for C++ but not for C"
           cmake_root = "CMakeLists.txt"
           if os.path.exists(cmake_root):
               with open(cmake_root, "r", encoding="utf-8") as f:
                   content = f.read()
-              patch_cmd = "\nadd_compile_options(-fexceptions -frtti -Wno-error=return-type -Wno-error=format -Wno-error=format-extra-args)\n"
-              if "fexceptions" not in content:
+              
+              patch_cmd = (
+                  "\n# Bảo hiểm đa tầng cho Compiler từ gốc\n"
+                  'set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=format -Wno-error=format-extra-args -Wno-format")\n'
+                  'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=format -Wno-error=format-extra-args -Wno-format -fexceptions -frtti -Wno-error=return-type")\n'
+              )
+              if "CMAKE_CXX_FLAGS" not in content:
                   with open(cmake_root, "w", encoding="utf-8") as f:
                       f.write(patch_cmd + content)
 
@@ -69,7 +74,7 @@ jobs:
           # BỘ LỌC TỰ ĐỘNG VÁ FILE & SĂN LÙNG QUÉT SẠCH QUẢNG CÁO TRONG CODE THÔ
           with open("patch_firmware.py", "w", encoding="utf-8") as sf:
               sf.write("import os\nfor r, d, fs in os.walk('.'):\n    for f in fs:\n        if f.endswith('.cc') or f.endswith('.c') or f.endswith('.h'):\n            fp = os.path.join(r, f)\n            try:\n                c = open(fp, 'r', errors='ignore').read()\n                # 1. Vá lỗi bẫy format định dạng nhạc tai họa\n                if 'audio_stream_player' in f and 'Stream:' in c:\n                    lines = c.split('\\n')\n                    for i, line in enumerate(lines):\n                        if 'Stream:' in line: lines[i] = '// ' + line\n                    c = '\\n'.join(lines)\n                # 2. Vá bẻ khóa phông chữ lớn\n                if '#error' in c:\n                    c = c.replace('#error', '// #error').replace('LV_FONT_FMT_TXT_LARGE 0', 'LV_FONT_FMT_TXT_LARGE 1')\n                # 3. SĂN LÙNG QUẢNG CÁO: Tự động xóa rác bản quyền của tác giả cũ đổi thành tên của riêng fen!\n                ads_keywords = ['TienHuyIoT', 'Tiến Huy', 'AE Maker', 'YouTube', 'Facebook', 'Donate', 'Ủng hộ']\n                for kw in ads_keywords:\n                    if kw in c:\n                        c = c.replace(kw, 'Nguyen Lam')\n                open(fp, 'w').write(c)\n            except: pass\n")
-          print("✅ Đã sửa đổi file CMake tổng và khởi tạo kịch bản dọn rác quảng cáo tự động thành công!")
+          print("✅ Đã tách biệt cờ C/C++ và khởi tạo kịch bản dọn rác quảng cáo tự động thành công!")
 
       # BƯỚC 2: Biên dịch sạch chính thức trong Docker Container
       - name: 🛠️ Setup ESP-IDF, Run Patch Script & Compile
@@ -88,7 +93,7 @@ jobs:
             idf.py fullclean
             
             export CFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
-            export CXXFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h -fexceptions -frtti"
+            export CXXFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
             
             idf.py build
 
