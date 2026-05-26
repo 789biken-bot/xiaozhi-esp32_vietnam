@@ -4,305 +4,170 @@ on:
   push:
     branches:
       - develop_vn
-
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   build-firmware:
-    name: 🏗 Advanced Hardware Build & Validation
+    name: 🏗️ Advanced Hardware Build & Validation
     runs-on: ubuntu-latest
 
     steps:
-      ######################################################################
-      # CHECKOUT
-      ######################################################################
       - name: 📂 Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      ######################################################################
-      # CREATE SDKCONFIG + PARTITION + AUTO PATCH
-      ######################################################################
-      - name: 🐍 Create Hardware Profiles & Auto Patch
-        shell: python
+      - name: 🐍 Generate Clean ESP-IDF Config
+        shell: bash
         run: |
+
+          cat > sdkconfig.defaults << 'EOF'
+          CONFIG_ESP_CONSOLE_USB_CDC=y
+          CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y
+
+          CONFIG_COMPILER_CXX_EXCEPTIONS=y
+          CONFIG_COMPILER_CXX_RTTI=y
+
+          CONFIG_SPIRAM=y
+          CONFIG_SPIRAM_MODE_OCT=y
+          CONFIG_SPIRAM_SPEED_80M=y
+
+          CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+          CONFIG_PARTITION_TABLE_CUSTOM=y
+          CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+          CONFIG_LV_FONT_FMT_TXT_LARGE=y
+          CONFIG_LV_USE_IMGFONT=y
+          EOF
+
+          cat > partitions.csv << 'EOF'
+          # Name, Type, SubType, Offset, Size, Flags
+          nvs,data,nvs,0x9000,0x6000,
+          phy_init,data,phy,0xf000,0x1000,
+          factory,app,factory,0x10000,6M,
+          storage,data,fat,,4M,
+          EOF
+
+          echo "✅ Clean config generated"
+
+      - name: 🔧 Patch Source Compatibility
+        shell: bash
+        run: |
+
+          python3 << 'PYEOF'
           import os
 
-          ##################################################################
-          # SDKCONFIG DEFAULTS
-          ##################################################################
-          sdkconfig = """
-CONFIG_ESP_CONSOLE_USB_CDC=y
-CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y
-
-CONFIG_COMPILER_CXX_EXCEPTIONS=y
-CONFIG_COMPILER_CXX_RTTI=y
-
-CONFIG_LV_FONT_FMT_TXT_LARGE=y
-CONFIG_LV_USE_IMGFONT=y
-
-CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_SPEED_80M=y
-CONFIG_SPIRAM_SIZE=8388608
-
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-
-CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
-"""
-
-          with open("sdkconfig.defaults", "w", encoding="utf-8") as f:
-              f.write(sdkconfig.strip() + "\n")
-
-          ##################################################################
-          # PARTITION TABLE
-          ##################################################################
-          partitions = """
-# Name,   Type, SubType, Offset,  Size, Flags
-nvs,      data, nvs,     0x9000,  0x6000,
-phy_init, data, phy,     0xf000,  0x1000,
-factory,  app,  factory, 0x10000, 6M,
-storage,  data, fat,              4M,
-"""
-
-          with open("partitions.csv", "w", encoding="utf-8") as f:
-              f.write(partitions.strip() + "\n")
-
-          ##################################################################
-          # FORCE HEADER
-          ##################################################################
-          force_header = r'''
-#pragma once
-
-#define LV_FONT_FMT_TXT_LARGE 1
-#define LV_USE_IMGFONT 1
-'''
-
-          with open("force_project_fix.h", "w", encoding="utf-8") as f:
-              f.write(force_header)
-
-          ##################################################################
-          # GLOBAL CMAKE PATCH
-          ##################################################################
-          cmake_patch = r'''
-
-# AUTO PATCHED FLAGS
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error -Wno-error=format -Wno-error=format-extra-args -Wno-error=format-security -Wno-format -Wno-format-extra-args -Wno-format-security -Wno-return-type")
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fexceptions -frtti -Wno-error -Wno-error=format -Wno-error=format-extra-args -Wno-error=format-security -Wno-format -Wno-format-extra-args -Wno-format-security -Wno-return-type")
-
-add_compile_options(
-    -fexceptions
-    -frtti
-    -Wno-error
-    -Wno-error=format
-    -Wno-error=format-extra-args
-    -Wno-error=format-security
-    -Wno-format
-    -Wno-format-extra-args
-    -Wno-format-security
-    -Wno-return-type
-    -Wno-unused-variable
-    -Wno-unused-function
-    -Wno-unused-parameter
-)
-
-'''
-
-          ##################################################################
-          # PATCH ROOT CMAKE
-          ##################################################################
-          root_cmake = "CMakeLists.txt"
-
-          if os.path.exists(root_cmake):
-
-              with open(root_cmake, "r", encoding="utf-8") as f:
-                  content = f.read()
-
-              if "AUTO PATCHED FLAGS" not in content:
-
-                  with open(root_cmake, "w", encoding="utf-8") as f:
-                      f.write(cmake_patch + "\n" + content)
-
-          ##################################################################
-          # PATCH MAIN CMAKE
-          ##################################################################
-          main_cmake = os.path.join("main", "CMakeLists.txt")
-
-          if os.path.exists(main_cmake):
-
-              with open(main_cmake, "r", encoding="utf-8") as f:
-                  content = f.read()
-
-              if "AUTO PATCHED FLAGS" not in content:
-
-                  with open(main_cmake, "w", encoding="utf-8") as f:
-                      f.write(cmake_patch + "\n" + content)
-
-          ##################################################################
-          # AUTO PATCH SOURCE FILES
-          ##################################################################
           for root, dirs, files in os.walk("."):
 
               for file in files:
 
-                  if file.endswith((".c", ".cc", ".cpp", ".h", ".hpp")):
+                  if not file.endswith((".c", ".cc", ".cpp", ".h", ".hpp")):
+                      continue
 
-                      path = os.path.join(root, file)
+                  path = os.path.join(root, file)
 
-                      try:
-                          with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                              content = f.read()
+                  try:
+                      with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                          content = f.read()
 
-                          ################################################################
-                          # NEUTRALIZE HARD #ERROR
-                          ################################################################
+                      original = content
+
+                      if "#error" in content:
                           content = content.replace("#error", "// #error")
 
-                          ################################################################
-                          # FORCE LVGL LARGE FONT
-                          ################################################################
+                      if "LV_FONT_FMT_TXT_LARGE 0" in content:
                           content = content.replace(
                               "LV_FONT_FMT_TXT_LARGE 0",
                               "LV_FONT_FMT_TXT_LARGE 1"
                           )
 
-                          ################################################################
-                          # DISABLE BROKEN STREAM LOG LINES
-                          ################################################################
-                          lines = content.splitlines()
-                          patched = []
-
-                          for line in lines:
-
-                              if "Stream:" in line:
-                                  patched.append("// " + line)
-                              else:
-                                  patched.append(line)
-
-                          content = "\n".join(patched)
-
-                          ################################################################
-                          # WRITE BACK
-                          ################################################################
+                      if original != content:
                           with open(path, "w", encoding="utf-8") as f:
                               f.write(content)
 
-                      except Exception:
-                          pass
+                  except Exception:
+                      pass
 
-          print("✅ GLOBAL BUILD PATCH READY")
-          print("✅ RTTI ENABLED")
-          print("✅ EXCEPTIONS ENABLED")
-          print("✅ FORMAT ERRORS NEUTRALIZED")
-          print("✅ ESP32-S3 16MB/8MB PROFILE READY")
+          print("✅ Source compatibility patch complete")
+          PYEOF
 
-      ######################################################################
-      # BUILD
-      ######################################################################
-      - name: 🛠 Setup ESP-IDF & Compile
+      - name: 🛠️ Setup ESP-IDF & Compile
         uses: espressif/esp-idf-ci-action@v1.1.0
-
         with:
           esp_idf_version: release-v5.4
           target: esp32s3
-
           command: |
-            echo "=============================="
-            echo "ESP-IDF CLEAN START"
-            echo "=============================="
 
-            rm -rf build
-            rm -f sdkconfig
+            echo "============================"
+            echo "START CLEAN BUILD"
+            echo "============================"
 
             idf.py set-target esp32s3
 
-            echo "=============================="
-            echo "RECONFIGURE"
-            echo "=============================="
+            idf.py fullclean
 
-            idf.py reconfigure || exit 1
+            idf.py reconfigure
 
-            echo "=============================="
-            echo "START BUILD"
-            echo "=============================="
+            idf.py build
 
-            idf.py build || exit 1
-
-      ######################################################################
-      # GENERATE MERGED BIN
-      ######################################################################
       - name: 🧩 Generate Factory Merged Binary
+        if: success()
         uses: espressif/esp-idf-ci-action@v1.1.0
-
         with:
           esp_idf_version: release-v5.4
           target: esp32s3
-
           command: |
-            idf.py merge-bin --output factory_merged.bin --format raw
-            cp factory_merged.bin ../factory_merged.bin
 
-      ######################################################################
-      # SIZE ANALYSIS
-      ######################################################################
+            idf.py merge-bin \
+              --output factory_merged.bin \
+              --format raw
+
       - name: 📊 Analyze Firmware Size
+        if: success()
         uses: espressif/esp-idf-ci-action@v1.1.0
-
         with:
           esp_idf_version: release-v5.4
           target: esp32s3
-
           command: |
+
             idf.py size
 
-      ######################################################################
-      # UPLOAD FULL BUILD LOGS
-      ######################################################################
-      - name: 📜 Upload Full Build Logs
-        uses: actions/upload-artifact@v4
-
-        with:
-          name: full-build-logs
-
-          path: |
-            build/log/*
-            sdkconfig
-            sdkconfig.defaults
-            partitions.csv
-
-      ######################################################################
-      # UPLOAD FIRMWARE
-      ######################################################################
       - name: 📦 Upload Firmware Artifacts
+        if: success()
         uses: actions/upload-artifact@v4
-
         with:
-          name: xiaozhi-vietnam-premium-firmware
-
+          name: xiaozhi-vietnam-firmware
           retention-days: 7
-          compression-level: 0
-
           path: |
             factory_merged.bin
             build/*.bin
             build/bootloader/*.bin
             build/partition_table/*.bin
 
-      ######################################################################
-      # BUILD SUMMARY
-      ######################################################################
-      - name: 📝 Publish Build Summary
+      - name: 📜 Upload Full Build Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-build-logs
+          retention-days: 3
+          path: |
+            build/log/*
+            sdkconfig
+            sdkconfig.defaults
+
+      - name: ✅ Publish Build Summary
+        if: success()
+        shell: bash
         run: |
-          echo "## 🚀 Xiaozhi ESP32-S3 Vietnam Build Finished" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 🚀 Xiaozhi Vietnam Build Success" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- RTTI ENABLED" >> $GITHUB_STEP_SUMMARY
-          echo "- EXCEPTIONS ENABLED" >> $GITHUB_STEP_SUMMARY
-          echo "- 16MB FLASH ENABLED" >> $GITHUB_STEP_SUMMARY
-          echo "- 8MB PSRAM ENABLED" >> $GITHUB_STEP_SUMMARY
-          echo "- FORMAT ERRORS DISABLED" >> $GITHUB_STEP_SUMMARY
+          echo "- ESP-IDF v5.4" >> $GITHUB_STEP_SUMMARY
+          echo "- Target: ESP32-S3" >> $GITHUB_STEP_SUMMARY
+          echo "- Flash: 16MB" >> $GITHUB_STEP_SUMMARY
+          echo "- PSRAM: 8MB" >> $GITHUB_STEP_SUMMARY
+          echo "- RTTI + Exceptions Enabled" >> $GITHUB_STEP_SUMMARY
