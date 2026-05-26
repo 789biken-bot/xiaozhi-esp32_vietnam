@@ -17,13 +17,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      ######################################################################
+      # CHECKOUT
+      ######################################################################
       - name: 📂 Checkout Source Code
         uses: actions/checkout@v4
 
       ######################################################################
-      # TẠO CẤU HÌNH PHẦN CỨNG + PATCH CMAKE TỰ ĐỘNG
+      # CREATE SDKCONFIG + PARTITION + AUTO PATCH
       ######################################################################
-      - name: 🐍 Create Hardware Profiles & Global Build Patch
+      - name: 🐍 Create Hardware Profiles & Auto Patch
         shell: python
         run: |
           import os
@@ -32,25 +35,25 @@ jobs:
           # SDKCONFIG DEFAULTS
           ##################################################################
           sdkconfig = """
-          CONFIG_ESP_CONSOLE_USB_CDC=y
-          CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y
+CONFIG_ESP_CONSOLE_USB_CDC=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y
 
-          CONFIG_COMPILER_CXX_EXCEPTIONS=y
-          CONFIG_COMPILER_CXX_RTTI=y
+CONFIG_COMPILER_CXX_EXCEPTIONS=y
+CONFIG_COMPILER_CXX_RTTI=y
 
-          CONFIG_LV_FONT_FMT_TXT_LARGE=y
-          CONFIG_LV_USE_IMGFONT=y
+CONFIG_LV_FONT_FMT_TXT_LARGE=y
+CONFIG_LV_USE_IMGFONT=y
 
-          CONFIG_SPIRAM=y
-          CONFIG_SPIRAM_MODE_OCT=y
-          CONFIG_SPIRAM_SPEED_80M=y
-          CONFIG_SPIRAM_SIZE=8388608
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_SIZE=8388608
 
-          CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 
-          CONFIG_PARTITION_TABLE_CUSTOM=y
-          CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
-          """
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+"""
 
           with open("sdkconfig.defaults", "w", encoding="utf-8") as f:
               f.write(sdkconfig.strip() + "\n")
@@ -59,12 +62,12 @@ jobs:
           # PARTITION TABLE
           ##################################################################
           partitions = """
-          # Name,   Type, SubType, Offset,  Size, Flags
-          nvs,      data, nvs,     0x9000,  0x6000,
-          phy_init, data, phy,     0xf000,  0x1000,
-          factory,  app,  factory, 0x10000, 6M,
-          storage,  data, fat,              4M,
-          """
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x6000,
+phy_init, data, phy,     0xf000,  0x1000,
+factory,  app,  factory, 0x10000, 6M,
+storage,  data, fat,              4M,
+"""
 
           with open("partitions.csv", "w", encoding="utf-8") as f:
               f.write(partitions.strip() + "\n")
@@ -72,65 +75,44 @@ jobs:
           ##################################################################
           # FORCE HEADER
           ##################################################################
-          with open("force_project_fix.h", "w", encoding="utf-8") as f:
-              f.write("""
-          #pragma once
+          force_header = r'''
+#pragma once
 
-          #define LV_FONT_FMT_TXT_LARGE 1
-          #define LV_USE_IMGFONT 1
-          """)
+#define LV_FONT_FMT_TXT_LARGE 1
+#define LV_USE_IMGFONT 1
+'''
+
+          with open("force_project_fix.h", "w", encoding="utf-8") as f:
+              f.write(force_header)
 
           ##################################################################
           # GLOBAL CMAKE PATCH
           ##################################################################
           cmake_patch = r'''
 
-          ##################################################################
-          # AUTO PATCHED FLAGS
-          ##################################################################
+# AUTO PATCHED FLAGS
 
-          set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} \
-          -Wno-error \
-          -Wno-error=format \
-          -Wno-error=format-extra-args \
-          -Wno-error=format-security \
-          -Wno-format \
-          -Wno-format-extra-args \
-          -Wno-format-security \
-          -Wno-return-type")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error -Wno-error=format -Wno-error=format-extra-args -Wno-error=format-security -Wno-format -Wno-format-extra-args -Wno-format-security -Wno-return-type")
 
-          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
-          -fexceptions \
-          -frtti \
-          -Wno-error \
-          -Wno-error=format \
-          -Wno-error=format-extra-args \
-          -Wno-error=format-security \
-          -Wno-format \
-          -Wno-format-extra-args \
-          -Wno-format-security \
-          -Wno-return-type")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fexceptions -frtti -Wno-error -Wno-error=format -Wno-error=format-extra-args -Wno-error=format-security -Wno-format -Wno-format-extra-args -Wno-format-security -Wno-return-type")
 
-          add_compile_options(
-              -fexceptions
-              -frtti
+add_compile_options(
+    -fexceptions
+    -frtti
+    -Wno-error
+    -Wno-error=format
+    -Wno-error=format-extra-args
+    -Wno-error=format-security
+    -Wno-format
+    -Wno-format-extra-args
+    -Wno-format-security
+    -Wno-return-type
+    -Wno-unused-variable
+    -Wno-unused-function
+    -Wno-unused-parameter
+)
 
-              -Wno-error
-              -Wno-error=format
-              -Wno-error=format-extra-args
-              -Wno-error=format-security
-
-              -Wno-format
-              -Wno-format-extra-args
-              -Wno-format-security
-
-              -Wno-return-type
-              -Wno-unused-variable
-              -Wno-unused-function
-              -Wno-unused-parameter
-          )
-
-          '''
+'''
 
           ##################################################################
           # PATCH ROOT CMAKE
@@ -138,10 +120,12 @@ jobs:
           root_cmake = "CMakeLists.txt"
 
           if os.path.exists(root_cmake):
+
               with open(root_cmake, "r", encoding="utf-8") as f:
                   content = f.read()
 
               if "AUTO PATCHED FLAGS" not in content:
+
                   with open(root_cmake, "w", encoding="utf-8") as f:
                       f.write(cmake_patch + "\n" + content)
 
@@ -151,10 +135,12 @@ jobs:
           main_cmake = os.path.join("main", "CMakeLists.txt")
 
           if os.path.exists(main_cmake):
+
               with open(main_cmake, "r", encoding="utf-8") as f:
                   content = f.read()
 
               if "AUTO PATCHED FLAGS" not in content:
+
                   with open(main_cmake, "w", encoding="utf-8") as f:
                       f.write(cmake_patch + "\n" + content)
 
@@ -173,15 +159,37 @@ jobs:
                           with open(path, "r", encoding="utf-8", errors="ignore") as f:
                               content = f.read()
 
-                          # Neutralize hard #error
+                          ################################################################
+                          # NEUTRALIZE HARD #ERROR
+                          ################################################################
                           content = content.replace("#error", "// #error")
 
-                          # Force LVGL large font
+                          ################################################################
+                          # FORCE LVGL LARGE FONT
+                          ################################################################
                           content = content.replace(
                               "LV_FONT_FMT_TXT_LARGE 0",
                               "LV_FONT_FMT_TXT_LARGE 1"
                           )
 
+                          ################################################################
+                          # DISABLE BROKEN STREAM LOG LINES
+                          ################################################################
+                          lines = content.splitlines()
+                          patched = []
+
+                          for line in lines:
+
+                              if "Stream:" in line:
+                                  patched.append("// " + line)
+                              else:
+                                  patched.append(line)
+
+                          content = "\n".join(patched)
+
+                          ################################################################
+                          # WRITE BACK
+                          ################################################################
                           with open(path, "w", encoding="utf-8") as f:
                               f.write(content)
 
@@ -214,16 +222,20 @@ jobs:
 
             idf.py set-target esp32s3
 
-            idf.py reconfigure
+            echo "=============================="
+            echo "RECONFIGURE"
+            echo "=============================="
+
+            idf.py reconfigure || exit 1
 
             echo "=============================="
             echo "START BUILD"
             echo "=============================="
 
-            idf.py build -v
+            idf.py build || exit 1
 
       ######################################################################
-      # MERGE BIN
+      # GENERATE MERGED BIN
       ######################################################################
       - name: 🧩 Generate Factory Merged Binary
         uses: espressif/esp-idf-ci-action@v1.1.0
@@ -250,7 +262,7 @@ jobs:
             idf.py size
 
       ######################################################################
-      # UPLOAD BUILD LOGS
+      # UPLOAD FULL BUILD LOGS
       ######################################################################
       - name: 📜 Upload Full Build Logs
         uses: actions/upload-artifact@v4
@@ -283,7 +295,7 @@ jobs:
             build/partition_table/*.bin
 
       ######################################################################
-      # SUMMARY
+      # BUILD SUMMARY
       ######################################################################
       - name: 📝 Publish Build Summary
         run: |
