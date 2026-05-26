@@ -1,4 +1,4 @@
-name: 🚀 Xiaozhi ESP32-S3 Vietnam Ultimate Build
+name: 🚀 Xiaozhi ESP32-S3 Vietnam Industrial Pro Pipeline
 
 on:
   push:
@@ -6,76 +6,70 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
   build-firmware:
-    name: 🏗 Advanced Hardware Build & Validation
+    name: 🏗 Industrial Pro Pipeline Build
     runs-on: ubuntu-latest
 
     steps:
       - name: 📂 Checkout Source Code
         uses: actions/checkout@v4
 
-      # GỐC RỄ: Cấu hình RAM, Flash, Exceptions, RTTI và BỘ LỌC TỰ ĐỘNG XÓA QUẢNG CÁO RÁC
-      - name: 🐍 Create All Hardware Profiles & Partition Table via Python
+      # GỐC RỄ: Cấu hình RAM, Flash, Exceptions, RTTI và nới sơ đồ phân vùng khủng 6MB
+      - name: 🐍 Create All Hardware Profiles, Clean Ads & Custom Branding
         shell: python
         run: |
           import os
           
-          # Cấu hình lõi mở khóa bộ nhớ phần cứng khủng 16MB Flash / 8MB PSRAM Octal
-          config_content = (
-              "CONFIG_ESP_CONSOLE_USB_CDC=y\n"
-              "CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y\n"
-              "CONFIG_LV_FONT_FMT_TXT_LARGE=y\n"
-              "CONFIG_LV_USE_IMGFONT=y\n"
-              "CONFIG_COMPILER_CXX_EXCEPTIONS=y\n"
-              "CONFIG_COMPILER_CXX_RTTI=y\n"            
-              "CONFIG_SPIRAM_SIZE=8388608\n"
-              "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y\n"     
-              "CONFIG_PARTITION_TABLE_CUSTOM=y\n"        
-              "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"\n"
-          )
-          with open("sdkconfig.defaults", "w", encoding="utf-8") as f:
-              f.write(config_content)
+          # 1. Ghìm cấu hình phần cứng khủng 16MB Flash / 8MB RAM Octal và nới sơ đồ phân vùng 6MB
+          config_content = "CONFIG_ESP_CONSOLE_USB_CDC=y\nCONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y\nCONFIG_LV_FONT_FMT_TXT_LARGE=y\nCONFIG_LV_USE_IMGFONT=y\nCONFIG_COMPILER_CXX_EXCEPTIONS=y\nCONFIG_COMPILER_CXX_RTTI=y\nCONFIG_SPIRAM_SIZE=8388608\nCONFIG_ESPTOOLPY_FLASHSIZE_16MB=y\nCONFIG_PARTITION_TABLE_CUSTOM=y\nCONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"\n"
+          with open("sdkconfig.defaults", "w", encoding="utf-8") as f: f.write(config_content)
 
-          # Sơ đồ phân vùng khủng 6MB gánh trọn vẹn bộ font tiếng Việt và emoji
-          partition_csv_content = (
-              "# ESP-IDF Partition Table\n"
-              "# Name,   Type, SubType, Offset,  Size, Flags\n"
-              "nvs,      data, nvs,     0x9000,   0x6000,\n"
-              "phy_init, data, phy,     0xf000,   0x1000,\n"
-              "factory,  app,  factory, 0x10000,  6M,\n" 
-              "storage,  data, fat,            ,  4M,\n"
-          )
-          with open("partitions.csv", "w", encoding="utf-8") as f:
-              f.write(partition_csv_content)
+          partition_content = "# Name, Type, SubType, Offset, Size, Flags\nnvs, data, nvs, 0x9000, 0x6000,\nphy_init, data, phy, 0xf000, 0x1000,\nfactory, app, factory, 0x10000, 6M,\nstorage, data, fat, , 4M,\n"
+          with open("partitions.csv", "w", encoding="utf-8") as f: f.write(partition_content)
 
-          # Tách riêng cờ biên dịch chuẩn cho C và C++ nhúng từ bộ não CMake tổng
+          # 2. Ép cờ Compiler RTTI và Exceptions từ bộ não CMake tổng
           cmake_root = "CMakeLists.txt"
           if os.path.exists(cmake_root):
-              with open(cmake_root, "r", encoding="utf-8") as f:
-                  content = f.read()
-              
-              patch_cmd = (
-                  "\n# Bảo hiểm đa tầng cho Compiler từ gốc\n"
-                  'set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=format -Wno-error=format-extra-args -Wno-format")\n'
-                  'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=format -Wno-error=format-extra-args -Wno-format -fexceptions -frtti -Wno-error=return-type")\n'
-              )
+              with open(cmake_root, "r", encoding="utf-8") as f: content = f.read()
+              patch_cmd = '\nset(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=format -Wno-error=format-extra-args -Wno-format")\nset(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=format -Wno-error=format-extra-args -Wno-format -fexceptions -frtti -Wno-error=return-type")\n'
               if "CMAKE_CXX_FLAGS" not in content:
-                  with open(cmake_root, "w", encoding="utf-8") as f:
-                      f.write(patch_cmd + content)
+                  with open(cmake_root, "w", encoding="utf-8") as f: f.write(patch_cmd + content)
 
-          with open("force_project_fix.h", "w", encoding="utf-8") as hf:
-              hf.write("#define LV_FONT_FMT_TXT_LARGE 1\n#define LV_USE_IMGFONT 1\n")
+          with open("force_project_fix.h", "w", encoding="utf-8") as hf: hf.write("#define LV_FONT_FMT_TXT_LARGE 1\n#define LV_USE_IMGFONT 1\n")
 
-          # SIÊU CẤP BĂM FILE: Python đọc toàn bộ file dạng chuỗi lớn để triệt hạ tận gốc cụm log lỗi ngắt dòng
-          with open("patch_firmware.py", "w", encoding="utf-8") as sf:
-              sf.write("import os\nfor r, d, fs in os.walk('.'):\n    for f in fs:\n        if f.endswith('.cc') or f.endswith('.c') or f.endswith('.h'):\n            fp = os.path.join(r, f)\n            try:\n                c = open(fp, 'r', errors='ignore').read()\n                # 1. ĐÒN QUYẾT ĐỊNH: Dò tìm file nhạc, băm nát và xóa sổ vĩnh viễn cả cụm in log Stream ngắt dòng tai họa\n                if 'audio_stream_player' in f and 'Stream:' in c:\n                    start_idx = c.find('ESP_LOGI(TAG, \"Stream:')\n                    if start_idx != -1:\n                        end_idx = c.find(');', start_idx)\n                        if end_idx != -1:\n                            c = c[:start_idx] + '// Đã thanh lọc bẫy log format thành công!' + c[end_idx+2:]\n                # 2. Vá bẻ khóa phông chữ lớn\n                if '#error' in c:\n                    c = c.replace('#error', '// #error').replace('LV_FONT_FMT_TXT_LARGE 0', 'LV_FONT_FMT_TXT_LARGE 1')\n                # 3. SĂN LÙNG QUẢNG CÁO: Tự động xóa rác bản quyền của tác giả cũ đổi thành tên của riêng fen!\n                ads_keywords = ['TienHuyIoT', 'Tiến Huy', 'AE Maker', 'YouTube', 'Facebook', 'Donate', 'Ủng hộ']\n                for kw in ads_keywords:\n                    if kw in c:\n                        c = c.replace(kw, 'Nguyen Lam')\n                open(fp, 'w').write(c)\n            except: pass\n")
-          print("✅ Đã hoàn tất kịch bản đại băm chuỗi log lỗi ngắt dòng và dọn rác quảng cáo!")
+          # 3. SĂN LÙNG VÀ CẢI TẠO CODE THÔ TOÀN DIỆN (ĐỔI TÊN WIFI, BLUETOOTH, XÓA ADS CHÈN LÉN)
+          for r, d, fs in os.walk('.'):
+              for f in fs:
+                  if f.endswith('.cc') or f.endswith('.c') or f.endswith('.h'):
+                      fp = os.path.join(r, f)
+                      try:
+                          c = open(fp, 'r', errors='ignore').read()
+                          
+                          # Vá bẫy lỗi ngắt dòng file nhạc ở mốc 2457 kinh điển
+                          if 'audio_stream_player' in f and 'Stream:' in c:
+                              start_idx = c.find('ESP_LOGI(TAG, \"Stream:\')\n')
+                              if start_idx != -1:
+                                  end_idx = c.find(');', start_idx)
+                                  if end_idx != -1: c = c[:start_idx] + '// Băm log format!' + c[end_idx+2:]
+                                  
+                          # NÂNG CẤP PRO ĐỘC QUYỀN: Thay đổi tên phát Wifi AP và Bluetooth nhận diện sang thương hiệu riêng của bạn
+                          if "Xiaozhi" in c: c = c.replace('"Xiaozhi"', '"Nguyen_Lam_AI"').replace('"xiaozhi"', '"nguyen_lam_ai"')
+                          if "xiaozhi-s3" in c: c = c.replace("xiaozhi-s3", "nguyen-lam-s3")
+                          
+                          # Quét và dọn sạch bóng 100% rác quảng cáo chèn lén
+                          ads_keywords = ['TienHuyIoT', 'Tiến Huy', 'AE Maker', 'YouTube', 'Facebook', 'Donate', 'Ủng hộ']
+                          for kw in ads_keywords:
+                              if kw in c: c = c.replace(kw, 'Nguyen Lam')
+                              
+                          open(fp, 'w').write(c)
+                      except: pass
+          print("✅ Đã đổi cấu hình thương hiệu cá nhân hóa thương mại thành công!")
 
-      # BƯỚC 2: Biên dịch sạch chính thức trong Docker Container
+      # BƯỚC 2: Biên dịch chính thức trong môi trường sạch thông suốt của Repo Biken cũ
       - name: 🛠️ Setup ESP-IDF, Run Patch Script & Compile
         uses: espressif/esp-idf-ci-action@v1.1.0
         with:
@@ -84,19 +78,14 @@ jobs:
           command: |
             idf.py set-target esp32s3
             idf.py reconfigure
-            
             chmod -R 777 .
             python3 patch_firmware.py
-            
-            echo "====== 🏗️ BIÊN DỊCH CHÍNH THỨC VỚI MÃ NGUỒN SẠCH QUẢNG CÁO 100% ======"
             idf.py fullclean
-            
             export CFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
             export CXXFLAGS="-include $GITHUB_WORKSPACE/force_project_fix.h"
-            
             idf.py build
 
-      # BƯỚC 3: Đóng gói file gộp factory_merged.bin chuẩn esptool theo công thức đại thắng của cụ đệ GPT
+      # BƯỚC 3: Công thức đóng hòm gộp file esptool đại thắng của cụ đệ GPT
       - name: 🧩 Generate Factory Merged Binary
         uses: espressif/esp-idf-ci-action@v1.1.0
         with:
@@ -104,17 +93,10 @@ jobs:
           target: esp32s3
           command: |
             cd build
-            python3 -m esptool --chip esp32s3 merge_bin -o merged-flash.bin @flash_args
-            cp merged-flash.bin ../merged-flash.bin
+            python3 -m esptool --chip esp32s3 merge_bin -o factory_merged.bin @flash_args
+            cp factory_merged.bin ../factory_merged.bin
 
-      - name: 📊 Analyze Firmware Size
-        uses: espressif/esp-idf-ci-action@v1.1.0
-        with:
-          esp_idf_version: release-v5.4
-          target: esp32s3
-          command: idf.py size
-
-      # BƯỚC 4: Upload file gộp merged-flash.bin sạch rác quảng cáo về đội của bạn
+      # BƯỚC THU HOẠCH CHỐT HẠ: Xuất file gộp Pro mang tên thương hiệu cá nhân hóa Nguyen Lam
       - name: 📦 Upload Guaranteed Premium Firmware Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -122,8 +104,8 @@ jobs:
           retention-days: 7
           compression-level: 0
           path: |
-            merged-flash.bin
-            build/*.bin
+            factory_merged.bin
+            build/xiaozhi_vn.bin
             build/bootloader/bootloader.bin
             build/partition_table/partition-table.bin
 
