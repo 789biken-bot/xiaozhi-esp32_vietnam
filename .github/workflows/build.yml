@@ -8,219 +8,35 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
-
   build-firmware:
     name: 🏗 Advanced Hardware Build & Validation
     runs-on: ubuntu-latest
 
     steps:
 
-      ######################################################################
-      # CHECKOUT
-      ######################################################################
-
       - name: 📂 Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      ######################################################################
-      # GENERATE HARDWARE PROFILE
-      ######################################################################
+      ####################################################################
+      # AUTO PATCH SYSTEM
+      ####################################################################
 
-      - name: 🐍 Generate ESP32-S3 Hardware Profile
+      - name: 🐍 Generate Hardware Profiles & Auto Patch System
         shell: python
         run: |
-          from pathlib import Path
+          import os
+          import re
 
-          sdkconfig = r"""
+          sdkconfig = r'''
           CONFIG_ESP_CONSOLE_USB_CDC=y
           CONFIG_ESP_CONSOLE_SECONDARY_USB_CDC=y
 
           CONFIG_COMPILER_CXX_EXCEPTIONS=y
           CONFIG_COMPILER_CXX_RTTI=y
 
-          CONFIG_LV_FONT_FMT_TXT_LARGE=y
-          CONFIG_LV_USE_IMGFONT=y
-
           CONFIG_SPIRAM=y
-          CONFIG_SPIRAM_MODE_OCT=y
-          CONFIG_SPIRAM_SPEED_80M=y
-          CONFIG_SPIRAM_SIZE=8388608
-
-          CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-
-          CONFIG_PARTITION_TABLE_CUSTOM=y
-          CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
-          """
-
-          Path("sdkconfig.defaults").write_text(
-              sdkconfig.strip() + "\n",
-              encoding="utf-8"
-          )
-
-          partitions = r"""
-          # Name, Type, SubType, Offset, Size, Flags
-          nvs,data,nvs,0x9000,0x6000,
-          phy_init,data,phy,0xf000,0x1000,
-          factory,app,factory,0x10000,6M,
-          storage,data,fat,,4M,
-          """
-
-          Path("partitions.csv").write_text(
-              partitions.strip() + "\n",
-              encoding="utf-8"
-          )
-
-          print("✅ sdkconfig.defaults generated")
-          print("✅ partitions.csv generated")
-
-      ######################################################################
-      # BUILD
-      ######################################################################
-
-      - name: 🛠️ Setup ESP-IDF & Compile
-        uses: espressif/esp-idf-ci-action@v1.1.0
-
-        with:
-          esp_idf_version: release-v5.4
-          target: esp32s3
-
-          command: |
-            set -eo pipefail
-
-            echo "=================================================="
-            echo "ESP-IDF VERSION"
-            echo "=================================================="
-
-            idf.py --version
-
-            echo "=================================================="
-            echo "SET TARGET"
-            echo "=================================================="
-
-            idf.py set-target esp32s3
-
-            echo "=================================================="
-            echo "CREATE GLOBAL COMPILER FLAGS"
-            echo "=================================================="
-
-            mkdir -p build
-
-            cat > build/extra_flags.cmake <<'EOF'
-            add_compile_options(
-              -fexceptions
-              -frtti
-              -Wno-error
-              -Wno-format
-              -Wno-error=format
-              -Wno-error=format-extra-args
-              -Wno-error=return-type
-            )
-            EOF
-
-            export IDF_CMAKE_ARGS="-C build/extra_flags.cmake"
-
-            echo "=================================================="
-            echo "SHOW SDKCONFIG"
-            echo "=================================================="
-
-            cat sdkconfig.defaults
-
-            echo "=================================================="
-            echo "RECONFIGURE"
-            echo "=================================================="
-
-            idf.py reconfigure
-
-            echo "=================================================="
-            echo "BUILD"
-            echo "=================================================="
-
-            idf.py build 2>&1 | tee build.log
-
-      ######################################################################
-      # ALWAYS UPLOAD LOGS
-      ######################################################################
-
-      - name: 📜 Upload Full Build Logs
-        if: always()
-
-        uses: actions/upload-artifact@v4
-
-        with:
-          name: full-build-logs
-          retention-days: 7
-
-          path: |
-            build.log
-            build/log/*
-            sdkconfig
-            sdkconfig.defaults
-
-      ######################################################################
-      # GENERATE MERGED BIN
-      ######################################################################
-
-      - name: 🧩 Generate Factory Merged Binary
-        if: success()
-
-        uses: espressif/esp-idf-ci-action@v1.1.0
-
-        with:
-          esp_idf_version: release-v5.4
-          target: esp32s3
-
-          command: |
-            set -eo pipefail
-
-            idf.py merge-bin --output factory_merged.bin --format raw
-
-            cp factory_merged.bin ../factory_merged.bin
-
-      ######################################################################
-      # SIZE ANALYSIS
-      ######################################################################
-
-      - name: 📊 Analyze Firmware Size
-        if: success()
-
-        uses: espressif/esp-idf-ci-action@v1.1.0
-
-        with:
-          esp_idf_version: release-v5.4
-          target: esp32s3
-
-          command: |
-            idf.py size
-
-      ######################################################################
-      # UPLOAD BINARIES
-      ######################################################################
-
-      - name: 📦 Upload Firmware Artifacts
-        if: success()
-
-        uses: actions/upload-artifact@v4
-
-        with:
-          name: xiaozhi-vietnam-premium-firmware
-          retention-days: 7
-          compression-level: 0
-
-          path: |
-            factory_merged.bin
-            build/*.bin
-            build/bootloader/*.bin
-            build/partition_table/*.bin
-
-      ######################################################################
-      # SUMMARY
-      ######################################################################
-
-      - name: 📝 Publish Build Summary
-        if: always()
-
-        run: |
-          echo "## 🚀 Xiaozhi ESP32-S3 Vietnam Build Finished" >> $GITHUB_STEP_SUMMARY
+          CONFIG_SPIRAM_MODE_OCT
